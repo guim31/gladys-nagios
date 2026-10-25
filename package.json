@@ -1,8 +1,8 @@
 {
-  "name": "gladys-integration-template-js",
+  "name": "gladys-nagios",
   "version": "1.0.0",
   "private": true,
-  "description": "Official starter template to build an external integration for Gladys Assistant with the JavaScript SDK.",
+  "description": "Gladys Assistant integration for Nagios Core: hosts and services as devices, scene triggers when a host goes down or a service fails, acknowledgement and check now from scenes, a dashboard widget.",
   "type": "module",
   "main": "index.js",
   "scripts": {

@@ -1,61 +1,219 @@
-# Demo Devices Template
+# Nagios
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Bring your [Nagios Core](https://www.nagios.org/projects/nagios-core/)
+monitoring into Gladys: each host becomes a device (up, services WARNING,
+CRITICAL and UNKNOWN, unhandled problems, acknowledged, downtime), a "Nagios"
+device sums up the whole setup and tells whether Nagios runs, and your scenes
+react when a host goes down or a service fails — a red light when the NAS is
+down, a message when a backup is CRITICAL. A scene can also acknowledge the
+problems of a host or have it checked right away, and a dashboard widget lists
+the problems in progress.
 
-## What you get
+The integration reads the JSON CGIs of the Nagios web interface on your local
+network, with a web user. Nothing goes through a cloud.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+Tested against a real Nagios Core 4.5 (4.5.12, `jasonrivers/nagios` Docker
+image, dummy checks forced to WARNING, CRITICAL and UNKNOWN, a host DOWN, a
+host UNREACHABLE behind it, a downtime, acknowledgements, a host never checked,
+the daemon stopped). Feedback welcome:
+[github.com/guim31/gladys-nagios/issues](https://github.com/guim31/gladys-nagios/issues).
 
-## Configuration
+## What you need
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+- Gladys Assistant 5.1.0 or later.
+- Nagios Core 4 (4.0 or later: the JSON CGIs `statusjson.cgi` and
+  `objectjson.cgi` came with it) and its web interface, reachable from the
+  Gladys machine. Nagios XI, Icinga, Naemon and Shinken are other products.
+- A web user for Gladys, with the rights it needs in `cgi.cfg`.
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+## Getting started
 
-## Actions
+### 1. Create a web user
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+On the Nagios server, add a user to the password file of the web interface
+(the path depends on the installation):
 
-## Scenes
+```
+htpasswd /usr/local/nagios/etc/htpasswd.users gladys
+```
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+Then give it the rights in `cgi.cfg`, by adding `gladys` to these lines (comma
+separated):
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+```
+authorized_for_all_hosts=nagiosadmin,gladys
+authorized_for_all_services=nagiosadmin,gladys
+authorized_for_all_host_commands=nagiosadmin,gladys
+authorized_for_all_service_commands=nagiosadmin,gladys
+```
+
+The last two are only needed to acknowledge or check now from Gladys: leave
+them out if Gladys must only read. Without the first two, the user sees only
+the hosts and services it is a contact of. No restart is needed: the CGIs read
+`cgi.cfg` at each request. The commands also need `check_external_commands=1`
+in `nagios.cfg` (the default).
+
+### 2. Configure the integration
+
+In Gladys, open the configuration of the integration:
+
+- **Address**: the address of the Nagios web interface, e.g.
+  `192.168.1.2/nagios`. `http://` and `/nagios` are added unless you type
+  others (`/nagios4` on Debian and Ubuntu packages); the address of a page of
+  the interface, copied from the browser, works too.
+- **Web user** and **Password**: the user of step 1.
+- **Host groups (optional)**: names of Nagios host groups (`hostgroup_name`)
+  separated by commas, e.g. `homelab, linux-servers`: a host in one of them is
+  kept. Empty: every host.
+- **Refresh interval**: 30 seconds to 5 minutes (1 minute by default).
+- **Allow acknowledging from scenes** and **Allow checking now from scenes**:
+  untick to turn these actions off.
+- **Accept self-signed certificates**: only for an `https://` address with a
+  certificate of your own; the certificate is then not verified.
+- **Language of the names**: language of the feature names and of the scene
+  results.
+
+Save, then click **Test the connection**: it shows the Nagios version, the
+number of hosts, of hosts down and of services in problem.
+
+### 3. Add the devices
+
+Open the **Discover** tab of the integration and add the hosts to follow, and
+the "Nagios" device if you want the totals. The scene triggers work for every
+host, added to Gladys or not.
+
+## The devices
+
+Each **host** (named after its alias in Nagios):
+
+| Feature            | Value                                                                |
+| ------------------ | -------------------------------------------------------------------- |
+| Host up            | 1 UP, 0 DOWN or UNREACHABLE; empty while the host is PENDING         |
+| Services WARNING   | number of services WARNING                                           |
+| Services CRITICAL  | number of services CRITICAL                                          |
+| Services UNKNOWN   | number of services UNKNOWN                                           |
+| Unhandled problems | host and service problems neither acknowledged nor in a downtime     |
+| Host acknowledged  | 1 while the host is DOWN or UNREACHABLE and its problem acknowledged |
+| In downtime        | 1 while the host is in a scheduled downtime                          |
+
+The **Nagios** device: Nagios running (1 while the Nagios daemon updates its
+status, 0 once it is stopped), Hosts down (DOWN or UNREACHABLE), Services
+WARNING, Services CRITICAL, Services UNKNOWN and Unhandled problems, over the
+hosts of the configuration.
+
+A host is UNREACHABLE when it is down behind a parent (`parents`) that is down
+too. The service counts include the states Nagios is still confirming (SOFT),
+as its web interface shows them. Values are sent to Gladys only when they
+change, and every 6 hours otherwise.
 
 ## Dashboard
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+The **Nagios problems** widget shows three tiles — the hosts down, the
+services CRITICAL, the unhandled problems — and the problems: hosts DOWN, then
+UNREACHABLE, then services CRITICAL, UNKNOWN and WARNING, the newest first.
+Each row gives the service and its state, the host, ✓ once acknowledged and ⏸
+in a downtime. Ten rows at most. **Refresh** reads Nagios again. In its
+settings, choose hosts to show only theirs (empty: every host).
+
+## Scenes
+
+### Triggers
+
+- **A host goes down**: a host goes DOWN or UNREACHABLE. Filter: hosts
+  (empty: any). Variables: host name, state (DOWN, UNREACHABLE). A host going
+  from DOWN to UNREACHABLE is not announced twice.
+- **A host is back up**: a host announced down is UP again. Variables: host
+  name, duration in minutes.
+- **A service has a problem**: a service enters WARNING, CRITICAL or UNKNOWN,
+  or changes between them (WARNING to CRITICAL, for example). Filters: hosts,
+  states (empty: any; for "CRITICAL only", choose CRITICAL). Variables: host
+  name, service, state, check output (its first line).
+- **A service is OK again**: a service announced in problem is OK again.
+  Filters: hosts, the last problem state announced. Variables: host name,
+  service, last problem state, duration in minutes.
+- **Nagios no longer watches**: the web interface fails to answer twice in a
+  row, or the Nagios daemon is stopped (variables: address, error).
+
+The problems already there when the integration starts are not announced,
+but their end is. Only confirmed (HARD) states count: while Nagios retries a
+check (SOFT state, up to `max_check_attempts`), nothing is announced, as
+Nagios does not notify either. A change that happens while Gladys or the
+integration restarts is announced once at the next read. A problem in a
+downtime (of the service or of its host) is not announced; one that is still
+there when the downtime ends is announced then.
+
+### Actions
+
+- **Acknowledge the problems of a host**: acknowledges in Nagios the host
+  problem (DOWN, UNREACHABLE) and each of its services in problem not
+  acknowledged yet, with a comment (empty: "Acknowledged from Gladys"). The
+  acknowledgement is sticky (until the host is UP or the service OK) and its
+  comment is kept across restarts; the author is the web user (the alias of its
+  contact when `lock_author_names` is on, the default). Returns
+  the number acknowledged. Turn it off with "Allow acknowledging from scenes".
+- **Check a host now**: asks Nagios to check the host and all its services
+  right away (forced, as "Re-schedule the next check" of the web interface),
+  for example after a repair or a reboot. The new states come with the next
+  reads. Turn it off with "Allow checking now from scenes".
+- **Read the problems**: counts and lists the problems of one host, or of all,
+  for the next actions: number, unhandled, hosts down, services CRITICAL,
+  WARNING and UNKNOWN, and the list "host: problem".
+
+### Scene ideas
+
+- **A red light when the NAS is down**: trigger "A host goes down", host NAS →
+  turn the living-room lamp red and send
+  `{{triggerEvent.data.host}}: {{triggerEvent.data.state_name}}`.
+- **Critical services only**: trigger "A service has a problem", state
+  CRITICAL → message `{{triggerEvent.data.host}} / {{triggerEvent.data.service}}:
+{{triggerEvent.data.output}}`.
+- **Back after a reboot**: when the smart plug of the NAS is turned on again,
+  wait 3 minutes, then "Check a host now" on the NAS: no need to wait for the
+  next check.
+- **Morning report**: every day at 8:00, "Read the problems" → send the count
+  and the list when the count is above 0.
+- **Seen from the couch**: a dashboard button or a Zigbee remote runs
+  "Acknowledge the problems of a host" on the NAS.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"User or password refused by the web server"**: check the user in
+  `htpasswd.users` (log in to the web interface with it).
+- **"Nagios does not answer"**: check the address from the Gladys machine.
+  `localhost` is the integration container itself: use the IP address of the
+  Nagios machine.
+- **"No Nagios Core 4 at this address"**: the web path is wrong (`/nagios`,
+  `/nagios4`…), or another program answers there. Copy the address of the
+  Nagios home page from the browser.
+- **"The Nagios daemon is not running"**: the web server answers but Nagios
+  itself is stopped or hung (its status file is missing or old): restart
+  Nagios, and check its configuration with `nagios -v nagios.cfg`.
+- **"No host visible"**: add the user to `authorized_for_all_hosts` and
+  `authorized_for_all_services` in `cgi.cfg`, or make it a contact of the
+  hosts.
+- **"A host group of the configuration does not exist"**: check the spelling,
+  it is the `hostgroup_name`, not its alias.
+- **"Certificate refused"**: tick "Accept self-signed certificates".
+- **The acknowledgement or the check is refused**: add the user to
+  `authorized_for_all_host_commands` and `authorized_for_all_service_commands`
+  in `cgi.cfg`; "Nagios does not accept external commands": set
+  `check_external_commands=1` in `nagios.cfg` and restart Nagios.
+
+## Limits
+
+- One Nagios per integration. Nagios XI and the forks (Icinga, Naemon) are not
+  supported: their interfaces differ.
+- Host states and service states only: no metrics, no performance data.
+- The integration reads Nagios at the chosen interval: an event that comes and
+  goes between two reads is missed. Nagios writes its status every 10 seconds
+  (`status_update_interval`): an acknowledgement shows a few seconds later.
+- "A service is OK again" also fires when a service in problem is removed from
+  monitoring; a host removed from Nagios or from the scope ends quietly.
+- At most 30 scene events per read: a network outage can raise dozens at once;
+  the rest follows at the next reads.
+- No quota: each read sends three requests to the CGIs (one more per host
+  group, and the list of the objects once an hour, for the aliases). A command
+  is two requests (the form, for the anti-CSRF token of Nagios 4.5, then the
+  command).
+
+Not affiliated with Nagios Enterprises.

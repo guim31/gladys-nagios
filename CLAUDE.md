@@ -16,8 +16,8 @@ its only runtime dependency. It started from the official JavaScript template.
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/hub.test.js              # one file
+node --test --test-name-pattern "widget"  # tests whose name matches
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
@@ -31,16 +31,22 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
+index.js                          SDK wiring only: src/app.js registers the handlers before connect()
+src/app.js                        every SDK handler -> the hub (also used by the tests)
+src/hub.js                        reading timer, states (changes + heartbeat), scene events, views
+src/devices.js                    host and "Nagios" devices, feature names (4 languages), values
+src/nagios/client.js              JSON CGIs (status, hosts, services in problem, groups, aliases) + cmd.cgi
+src/nagios/http.js                node:http/https GET/POST (a self-signed certificate accepted on request)
 src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+src/widgets.js                    dashboard widget `problems` (manifest `widgets`)
+src/texts.js                      connection, error, report, action texts (4 languages)
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
+src/store.js                      /data/nagios-state.json (the problems already seen)
+src/logs.js                       repeated failures logged once, then once when they heal
+gladys-assistant-integration.json manifest: name, config_schema, actions, triggers, widget...
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (en and fr mandatory)
 test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+                                  and helpers/fakeNagios.js (real answers in test/fixtures/nagios)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +76,9 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German and Spanish: action
+  messages, widget texts, feature names, manifest texts, and
+  `docs/{en,fr,de,es}.md`, kept in sync (`test/i18n.test.js`).
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +240,72 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## Nagios Core (propre à ce dépôt)
+
+Logique reprise au plus près de gladys-icinga (hub, événements, widget, actions, tests) : seuls
+le client, ses pièges et l'action « Vérifier un hôte maintenant » changent.
+
+- **API** : CGI de Nagios Core 4 derrière l'authentification Basic d'Apache (`htpasswd.users`).
+  Base `http(s)://<hôte>/<chemin>/cgi-bin`, `http://` et `/nagios` ajoutés si absents
+  (`/nagios4` chez Debian) ; tout ce qui précède `/cgi-bin` est le chemin web, une page de
+  l'interface (`main.php`) est retirée ; `/cgi-bin` seul = Nagios servi à la racine.
+- **Lecture** (vérifiée sur 4.5.12) : `statusjson.cgi?query=programstatus` (version,
+  `result.last_data_update`), `query=hostlist&details=true`,
+  `query=servicelist&details=true&servicestatus=warning critical unknown` (filtre côté Nagios),
+  `query=hostlist&hostgroup=<g>` par groupe (noms seulement),
+  `objectjson.cgi?query=hostlist&details=true` une fois par heure pour les **alias** (absents de `statusjson`). Les états sont
+  des **masques de bits** : hôte 1 PENDING, 2 UP, 4 DOWN, 8 UNREACHABLE ; service 1 PENDING, 2 OK,
+  4 WARNING, 8 UNKNOWN, 16 CRITICAL. Les dates sont en **millisecondes** (converties en secondes).
+  `state_type` 1 = HARD. `has_been_checked: false` = PENDING.
+- **Erreurs** (relevées en réel) : 401 HTML d'Apache (mauvais mot de passe) ; un utilisateur absent
+  des `authorized_for_*` et contact de rien reçoit un **200 avec des listes vides** (`no_hosts`) ;
+  `type_code` 6 « The hostgroup 'x' could not be found. » (`unknown_group`) ; mauvais chemin : 404
+  (`not_nagios`).
+- **Démon arrêté** : Apache répond toujours, mais Nagios supprime `status.dat` : `statusjson.cgi`
+  répond un **200 vide** (`daemon_stopped`). Un démon figé : `query_time - last_data_update` (deux
+  horloges du serveur) au-delà de 10 min. Compté comme une panne (déclencheur
+  `nagios_unreachable`, « Nagios ne surveille plus ») et `daemon_running` publié à 0 tout de suite.
+- **Commandes `cmd.cgi`** : **Nagios 4.5 exige un jeton anti-CSRF** (sans lui : « Error: Invalid or
+  missing CSRF cookie! ») : GET du formulaire (`cmd_typ`, `host`…) → `nagFormId` (champ caché et
+  cookie `NagFormId`) et `start_time` **au `date_format` du serveur**, puis POST
+  `application/x-www-form-urlencoded` avec `cmd_mod=2`, le champ et le cookie. Avant 4.5 : pas de
+  jeton, le POST passe sans. Réponse HTML : `infoMessage` « successfully submitted » ou
+  `errorMessage` (« not authorized » → `permission`, aussi pour un **hôte inconnu** ;
+  `check_external_commands=0` → `commands_disabled`). Commandes : 33/34 acquittement
+  (`sticky_ack=on`, sans notification), 96 + 17 vérification forcée de l'hôte puis de ses services.
+  L'auteur est imposé par Nagios (`lock_author_names=1` : l'alias du contact) ; avec
+  `lock_author_names=0`, un `com_author` vide est refusé (« Author was not entered », vu en réel) :
+  le client recopie celui du formulaire, à défaut l'utilisateur. Le formulaire lui-même porte un
+  `infoMessage` (« Please enter all required information ») : seul « successfully submitted » vaut
+  succès. Commentaire `persistent=on` (relu `persistent: true`). Un service revenu PENDING
+  (`servicestatus` inclut `pending`) n'est ni en problème ni rétabli.
+- **Piège payé : « soumis » n'est pas « appliqué »**. `cmd.cgi` écrit dans le tube de commandes et
+  répond succès ; le cœur de Nagios peut ensuite refuser (vu en réel : un temps d'arrêt avec des
+  champs incomplets, « External command failed » dans `nagios.log`). Et l'état n'apparaît dans
+  `statusjson` qu'au prochain `status.dat` (**10 s** par défaut) : l'acquittement relu juste après
+  peut encore être faux, d'où un second appel qui ré-acquitte (sans effet).
+- **Aucun piège nouveau du cœur Gladys ni du SDK** relevé sur ce dépôt.
+
+## Vérifié sur un vrai Nagios Core (25/10/2026)
+
+Image `jasonrivers/nagios` (Nagios Core **4.5.12**, Apache), réseau en pont `gladys-test-nagios`,
+aucun port publié. Hôtes et services à `check_dummy` (OK, WARNING, CRITICAL, UNKNOWN), un hôte DOWN,
+un hôte derrière lui par `parents` (UNREACHABLE), un hôte en temps d'arrêt fixe avec son service,
+un hôte sans check actif (PENDING), un groupe `homelab`, un utilisateur sans droits. Réponses gardées
+dans `test/fixtures/nagios/nagios-4.5.12.json` (l'hôte `localhost` de l'image retiré).
+
+Image de l'intégration avec les contraintes du bac à sable (`--cap-drop ALL --security-opt
+no-new-privileges --read-only --memory 256m --pids-limit 256`, volume `/data`, aucun port publié) :
+
+- Sans Gladys : reconnexion du SDK, pas de plantage, aucun secret dans les logs, ~19 Mo au repos,
+  arrêt propre sur SIGTERM (code 0).
+- Faux Gladys du SDK dans le conteneur verrouillé, contre le vrai Nagios : découverte (7
+  appareils), états, « Tester la connexion », widget, `get_problems` ; acquittement de deux services
+  (relu dans Nagios après 15 s), « Vérifier un hôte maintenant » ; `host_down`, `service_problem`,
+  `host_up`, `service_recovered` pilotés par résultats passifs (`PROCESS_*_CHECK_RESULT`),
+  `nagios_unreachable` et `daemon_running` à 0 au `sv stop nagios` ; mot de passe refusé (`auth`),
+  mauvais chemin (`not_nagios`), utilisateur sans droits (`no_hosts`, puis `permission` sur une
+  commande), port fermé (`unreachable`), groupe inconnu (`unknown_group`).
+- Non vérifié en réel : Nagios Core avant 4.5 (sans jeton CSRF), `date_format` autre que `us`,
+  HTTPS, un proxy inverse, un très gros parc.
