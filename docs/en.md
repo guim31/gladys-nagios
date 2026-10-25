@@ -148,7 +148,8 @@ there when the downtime ends is announced then.
   problem (DOWN, UNREACHABLE) and each of its services in problem not
   acknowledged yet, with a comment (empty: "Acknowledged from Gladys"). The
   acknowledgement is sticky (until the host is UP or the service OK) and its
-  comment is kept; Nagios writes the name of the web user as author. Returns
+  comment is kept across restarts; the author is the web user (the alias of its
+  contact when `lock_author_names` is on, the default). Returns
   the number acknowledged. Turn it off with "Allow acknowledging from scenes".
 - **Check a host now**: asks Nagios to check the host and all its services
   right away (forced, as "Re-schedule the next check" of the web interface),

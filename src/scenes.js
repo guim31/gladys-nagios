@@ -41,7 +41,7 @@ function assertReadable(hub) {
 
 /** The message of a refused command: what to change, in the user's language. */
 function commandFailure(err, language) {
-  if (err.kind === ERROR_KINDS.PERMISSION || err.kind === ERROR_KINDS.API) {
+  if (err.kind === ERROR_KINDS.PERMISSION) {
     return new Error(pick(ACTION_TEXT.commandRefused, language), { cause: err });
   }
   return new Error(pick(ERROR_TEXT[err.kind] ?? ERROR_TEXT.http, language), { cause: err });

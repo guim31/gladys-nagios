@@ -83,6 +83,8 @@ export const COMMANDS = Object.freeze({
   CHECK_HOST: 96, // SCHEDULE_HOST_CHECK
 });
 
+const ACKNOWLEDGEMENTS = new Set([COMMANDS.ACKNOWLEDGE_HOST, COMMANDS.ACKNOWLEDGE_SERVICE]);
+
 // The first line of a check output (the rest is the long output).
 const firstLine = (text) => String(text ?? '').split('\n')[0];
 const seconds = (ms) => (Number(ms) > 0 ? Math.round(Number(ms) / 1000) : 0);
@@ -199,7 +201,12 @@ export class NagiosClient {
       );
     }
     if (status === 403) {
-      throw new NagiosError(ERROR_KINDS.PERMISSION, `${path}: HTTP 403`, { status });
+      // On a read, the web server refuses (`Require ip`…): not a command right.
+      throw new NagiosError(
+        path === 'cmd.cgi' ? ERROR_KINDS.PERMISSION : ERROR_KINDS.AUTH,
+        `${path}: HTTP 403`,
+        { status },
+      );
     }
     if (status === 404 || (status >= 300 && status < 400)) {
       throw new NagiosError(ERROR_KINDS.NOT_NAGIOS, `No Nagios CGI here (HTTP ${status})`, {
@@ -343,9 +350,13 @@ export class NagiosClient {
     const answer = await this.json('statusjson.cgi', {
       query: 'servicelist',
       details: 'true',
-      servicestatus: 'warning critical unknown',
+      // PENDING too: a service announced in problem that goes back to
+      // PENDING (re-created, Nagios restarted without retention) has not
+      // recovered.
+      servicestatus: 'warning critical unknown pending',
     });
     const services = [];
+    const pending = [];
     for (const [hostName, list] of Object.entries(answer.data.servicelist ?? {})) {
       const host = byName.get(hostName);
       if (!host || !list || typeof list !== 'object') {
@@ -354,6 +365,12 @@ export class NagiosClient {
       for (const [description, service] of Object.entries(list)) {
         const state = SERVICE_STATE[Number(service?.status)];
         if (!state || service.has_been_checked === false) {
+          if (
+            Number(service?.status) === SERVICE_STATUS.PENDING ||
+            service?.has_been_checked === false
+          ) {
+            pending.push({ host: hostName, name: description });
+          }
           continue;
         }
         services.push({
@@ -371,7 +388,7 @@ export class NagiosClient {
         });
       }
     }
-    return { version, hosts, services, total: rawHosts.length };
+    return { version, hosts, services, pending, total: rawHosts.length };
   }
 
   /**
@@ -394,6 +411,12 @@ export class NagiosClient {
     if (startTime !== null) {
       form.start_time = startTime;
     }
+    // With lock_author_names=0, Nagios takes the author from the form and
+    // refuses an empty one ("Author was not entered"); locked, it ignores it.
+    const author = formValue(page.body, 'com_author');
+    if (author || ACKNOWLEDGEMENTS.has(type)) {
+      form.com_author = author || this.username || 'Gladys';
+    }
     if (token) {
       form.nagFormId = token;
     }
@@ -403,7 +426,9 @@ export class NagiosClient {
       cookie: token ? `NagFormId=${token}` : undefined,
     });
     const outcome = commandOutcome(result.body);
-    if (outcome.error || !outcome.info) {
+    // The form itself carries an infoMessage ("Please enter all required
+    // information…"): only the submission counts.
+    if (outcome.error || !/successfully submitted/i.test(outcome.info ?? '')) {
       throw this.commandError(type, outcome.error ?? 'No answer from cmd.cgi');
     }
   }
@@ -419,11 +444,13 @@ export class NagiosClient {
   }
 
   /** Acknowledge a host problem (sticky, persistent comment, no notification). */
+  // `persistent`: the comment survives a restart of Nagios.
   acknowledgeHost(host, comment) {
     return this.command(COMMANDS.ACKNOWLEDGE_HOST, {
       host,
       com_data: comment,
       sticky_ack: 'on',
+      persistent: 'on',
     });
   }
 
@@ -433,6 +460,7 @@ export class NagiosClient {
       service,
       com_data: comment,
       sticky_ack: 'on',
+      persistent: 'on',
     });
   }
 

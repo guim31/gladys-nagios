@@ -152,8 +152,8 @@ terminar el mantenimiento, se anuncia entonces.
   host (DOWN, UNREACHABLE) y cada uno de sus servicios con problemas aún no
   reconocido, con un comentario (vacío: «Reconocido desde Gladys»). El
   reconocimiento es persistente (hasta que el host vuelva a UP o el servicio a
-  OK) y su comentario se conserva; Nagios pone el nombre del usuario web como
-  autor. Devuelve el número reconocido. Desactívela con «Permitir reconocer
+  OK) y su comentario se conserva tras los reinicios; el autor es el usuario web (el
+  alias de su contacto cuando `lock_author_names` está activo, por defecto). Devuelve el número reconocido. Desactívela con «Permitir reconocer
   desde escenas».
 - **Comprobar un host ahora**: pide a Nagios que compruebe ya el host y todos
   sus servicios (forzado, como «Re-schedule the next check» de la interfaz

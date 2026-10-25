@@ -64,7 +64,7 @@ test('the services read are only the problems (servicestatus), aliases read once
   await client.snapshot();
   await client.snapshot();
   const list = nagios.calls.find((call) => call.params.query === 'servicelist');
-  assert.equal(list.params.servicestatus, 'warning critical unknown');
+  assert.equal(list.params.servicestatus, 'warning critical unknown pending');
   assert.equal(nagios.calls.filter((call) => call.cgi === 'objectjson.cgi').length, 1);
   // A new host: the aliases are read again.
   nagios.hosts.push({ ...nagios.host('nas'), name: 'printer', alias: 'Printer' });
@@ -153,6 +153,27 @@ test('commands: before Nagios 4.5 (no token), and the refusals', async () => {
   nagios.missing.clear();
   nagios.missing.add('external_commands');
   await rejectsWith(client.checkHostNow('nas'), ERROR_KINDS.COMMANDS_DISABLED);
+});
+
+test('commands: an unlocked author, a form sent back, a read refused by the web server', async () => {
+  const { nagios, client } = setup();
+  nagios.lockAuthor = false;
+  await client.acknowledgeHost('switch', 'Seen');
+  // The form of the fixture (command 96) has no author: the web user.
+  assert.equal(nagios.commands[0].author, USERNAME);
+  nagios.formOnPost = true;
+  await rejectsWith(client.acknowledgeHost('switch', 'Seen'), ERROR_KINDS.API);
+  nagios.formOnPost = false;
+  nagios.forbidden = true;
+  await rejectsWith(client.snapshot(), ERROR_KINDS.AUTH);
+});
+
+test('services back to PENDING are listed apart', async () => {
+  const { nagios, client } = setup();
+  nagios.setService('nas', 'Disk /', 1, { status: 1, has_been_checked: false });
+  const snapshot = await client.snapshot();
+  assert.ok(!snapshot.services.some((service) => service.name === 'Disk /'));
+  assert.deepEqual(snapshot.pending, [{ host: 'nas', name: 'Disk /' }]);
 });
 
 test('cmd.cgi pages: the real success, refusal and form', () => {

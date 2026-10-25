@@ -274,7 +274,12 @@ le client, ses pièges et l'action « Vérifier un hôte maintenant » changent.
   `errorMessage` (« not authorized » → `permission`, aussi pour un **hôte inconnu** ;
   `check_external_commands=0` → `commands_disabled`). Commandes : 33/34 acquittement
   (`sticky_ack=on`, sans notification), 96 + 17 vérification forcée de l'hôte puis de ses services.
-  L'auteur est imposé par Nagios (`lock_author_names=1` : l'alias du contact).
+  L'auteur est imposé par Nagios (`lock_author_names=1` : l'alias du contact) ; avec
+  `lock_author_names=0`, un `com_author` vide est refusé (« Author was not entered », vu en réel) :
+  le client recopie celui du formulaire, à défaut l'utilisateur. Le formulaire lui-même porte un
+  `infoMessage` (« Please enter all required information ») : seul « successfully submitted » vaut
+  succès. Commentaire `persistent=on` (relu `persistent: true`). Un service revenu PENDING
+  (`servicestatus` inclut `pending`) n'est ni en problème ni rétabli.
 - **Piège payé : « soumis » n'est pas « appliqué »**. `cmd.cgi` écrit dans le tube de commandes et
   répond succès ; le cœur de Nagios peut ensuite refuser (vu en réel : un temps d'arrêt avec des
   champs incomplets, « External command failed » dans `nagios.log`). Et l'état n'apparaît dans

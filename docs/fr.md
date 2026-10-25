@@ -155,8 +155,8 @@ annoncé ; s'il est toujours là à la fin de la maintenance, il l'est alors.
   l'hôte (DOWN, UNREACHABLE) et chacun de ses services en problème pas encore
   acquitté, avec un commentaire (vide : « Acquitté depuis Gladys »).
   L'acquittement est persistant (jusqu'au retour UP de l'hôte ou OK du
-  service) et son commentaire est conservé ; Nagios met le nom de l'utilisateur
-  web en auteur. Renvoie le nombre acquitté. Désactivez-la avec « Autoriser
+  service) et son commentaire est conservé aux redémarrages ; l'auteur est l'utilisateur web
+  (l'alias de son contact quand `lock_author_names` est actif, par défaut). Renvoie le nombre acquitté. Désactivez-la avec « Autoriser
   l'acquittement depuis les scènes ».
 - **Vérifier un hôte maintenant** : demande à Nagios de vérifier tout de suite
   l'hôte et tous ses services (forcé, comme « Re-schedule the next check » de

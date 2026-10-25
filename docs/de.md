@@ -153,8 +153,8 @@ gemeldet.
   (DOWN, UNREACHABLE) und jeden seiner Services mit Problem, der noch nicht
   quittiert ist, mit einem Kommentar (leer: „In Gladys quittiert“). Die
   Quittierung bleibt bestehen (bis der Host UP oder der Service OK ist), ihr
-  Kommentar wird behalten; Nagios trägt den Namen des Web-Benutzers als Autor
-  ein. Gibt die Zahl der quittierten Probleme zurück. Schalte sie mit
+  Kommentar bleibt über Neustarts erhalten; Autor ist der Web-Benutzer (der
+  Alias seines Kontakts, wenn `lock_author_names` aktiv ist, die Voreinstellung). Gibt die Zahl der quittierten Probleme zurück. Schalte sie mit
   „Quittieren aus Szenen erlauben“ aus.
 - **Host jetzt prüfen**: bittet Nagios, den Host und alle seine Services sofort
   zu prüfen (erzwungen, wie „Re-schedule the next check“ der Weboberfläche),

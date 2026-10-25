@@ -58,6 +58,12 @@ export class FakeNagios {
     this.missing = new Set();
     /** Before Nagios 4.5: cmd.cgi has no CSRF token. */
     this.csrf = true;
+    /** lock_author_names=0: the author comes from the form, and must not be empty. */
+    this.lockAuthor = true;
+    /** A proxy that loses the POST body: cmd.cgi shows the form again. */
+    this.formOnPost = false;
+    /** A web server that refuses the reads (`Require ip`). */
+    this.forbidden = false;
     this.calls = [];
     /** Commands committed: { type, host, service, comment, startTime }. */
     this.commands = [];
@@ -155,6 +161,9 @@ export class FakeNagios {
     if (headers.authorization !== expected) {
       return { status: 401, headers: {}, body: '<html><h1>Unauthorized</h1></html>' };
     }
+    if (this.forbidden) {
+      return { status: 403, headers: {}, body: '<html><h1>Forbidden</h1></html>' };
+    }
     if (cgi === 'statusjson.cgi') {
       if (this.failure === 'stopped') {
         return { status: 200, headers: {}, body: '\n' }; // status.dat removed
@@ -244,6 +253,12 @@ export class FakeNagios {
     if (this.csrf && (form.nagFormId !== TOKEN || headers.cookie !== `NagFormId=${TOKEN}`)) {
       return errorPage('Error: Invalid or missing CSRF cookie!');
     }
+    if (this.formOnPost) {
+      return html(fixture.cmd_form);
+    }
+    if (!this.lockAuthor && !form.com_author) {
+      return errorPage('Author was not entered');
+    }
     if (this.missing.has('commands')) {
       return html(fixture.cmd_denied);
     }
@@ -263,6 +278,7 @@ export class FakeNagios {
       ...(form.service ? { service: form.service } : {}),
       ...(form.com_data ? { comment: form.com_data } : {}),
       ...(form.start_time ? { startTime: form.start_time } : {}),
+      ...(form.com_author ? { author: form.com_author } : {}),
     });
     // Nagios applies them later (status.dat every 10 s): the tests see them at once.
     if (type === 33 && host.status !== 2) {

@@ -111,8 +111,9 @@ export function parseHostName(gladys, externalId) {
   if (typeof externalId !== 'string' || !externalId.startsWith(prefix)) {
     return null;
   }
+  // Nagios allows `:` in a host name: the caller checks the name exists.
   const name = externalId.slice(prefix.length);
-  return name && !name.includes(':') ? name : null;
+  return name || null;
 }
 
 const readOnly = { read_only: true, has_feedback: false, keep_history: true };

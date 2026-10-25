@@ -201,6 +201,23 @@ test('scene events: a service enters a problem, worsens, recovers', async (t) =>
   assert.equal(memory.state_name, 'CRITICAL');
 });
 
+test('a service back to PENDING has not recovered; its recovery comes later', async (t) => {
+  const w = await world(t);
+  w.nagios.setService('nas', 'Backup', 3, { status: 1, has_been_checked: false });
+  await w.hub.pollAll();
+  assert.deepEqual(w.fake.sceneEvents, []);
+  w.nagios.setService('nas', 'Backup', 0);
+  await w.hub.pollAll();
+  assert.deepEqual(keysOf(w), [TRIGGERS.SERVICE_RECOVERED]);
+});
+
+test('a host name with a colon is still found', async (t) => {
+  const w = await world(t);
+  w.nagios.hosts.push({ ...w.nagios.host('nas'), name: 'site:nas', alias: 'Site NAS' });
+  await w.hub.pollAll();
+  assert.equal(w.hub.findHost(hostDevice(w.gladys, 'site:nas'))?.name, 'site:nas');
+});
+
 test('a host removed from Nagios takes its services along, without events', async (t) => {
   const w = await world(t);
   w.nagios.hosts = w.nagios.hosts.filter((host) => host.name !== 'nas');

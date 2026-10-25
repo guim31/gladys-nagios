@@ -288,7 +288,7 @@ export class NagiosHub {
     return addressOf(this.config.apiUrl);
   }
 
-  async applySuccess({ version, hosts, services, total }) {
+  async applySuccess({ version, hosts, services, pending = [], total }) {
     const previous = this.data;
     let widgetChanged = this.error !== null || previous === null;
     if (this.error) {
@@ -310,6 +310,8 @@ export class NagiosHub {
       total,
       hosts: new Map(hosts.map((host) => [host.name, host])),
       services,
+      // Services back to PENDING: neither in problem nor recovered.
+      pending: new Set(pending.map((service) => serviceKey(service.host, service.name))),
     };
     if (
       previous &&
@@ -334,7 +336,8 @@ export class NagiosHub {
     if (wasError !== err.kind) {
       logger.warn(`Nagios ${this.instanceName()}: ${err.message}`);
     }
-    if (err.kind === ERROR_KINDS.DAEMON_STOPPED && this.running !== false) {
+    if (err.kind === ERROR_KINDS.DAEMON_STOPPED) {
+      // At every read: sendStates dedups, and keeps the heartbeat going.
       this.running = false;
       if (this.isCreated(instanceIds(this.gladys).device)) {
         await this.sendStates([
@@ -451,8 +454,8 @@ export class NagiosHub {
       }
     }
     for (const [key, entry] of Object.entries(knownServices)) {
-      if (current.has(key)) {
-        continue;
+      if (current.has(key) || this.data.pending.has(key)) {
+        continue; // still in problem, or PENDING: kept as is
       }
       if (!this.data.hosts.has(entry.host) || !entry.announced) {
         delete knownServices[key]; // the host left, or the problem was never announced
