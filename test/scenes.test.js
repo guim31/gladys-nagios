@@ -1,93 +1,123 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { DEVICE_BLUEPRINTS } from '../src/devices/index.js';
-import { MOTION_DETECTED_TRIGGER, motionSensor } from '../src/devices/motionSensor.js';
-import { SCENE_ACTIONS } from '../src/scenes.js';
-import { normalizeConfig } from '../src/config.js';
+import { COMMANDS } from '../src/nagios/client.js';
+import { BASE_CONFIG, createWorld, hostDevice } from './helpers/world.js';
 
-const manifest = JSON.parse(
-  await readFile(new URL('../gladys-assistant-integration.json', import.meta.url), 'utf8'),
-);
-const config = normalizeConfig();
+async function world(t, options) {
+  const created = await createWorld(options);
+  t.after(() => created.app.stop());
+  return created;
+}
 
-const declarationOf = (list, key) => manifest[list].find((entry) => entry.key === key);
-const keysOf = (list) => (list ?? []).map((entry) => entry.key);
-const deviceIdOf = (gladys, key) =>
-  DEVICE_BLUEPRINTS.find((bp) => bp.key === key).deviceExternalId(gladys);
+const committed = (w) =>
+  w.nagios.commands.map(({ type, host, service, comment }) => [type, host, service, comment]);
 
-// Let the async interval callback run to completion.
-const flush = () => new Promise((resolve) => setImmediate(resolve));
-
-test('the motion sensor fires one motion_detected event per detection, none on the clear', async (t) => {
-  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
-  const gladys = createFakeGladys();
-  const stopPush = motionSensor.startPush(gladys, config);
-  try {
-    t.mock.timers.tick(60_000);
-    await flush();
-    assert.equal(gladys.fake.sceneEvents.length, 1, 'one detection, one event');
-    assert.equal(gladys.fake.sceneEvents[0].key, MOTION_DETECTED_TRIGGER);
-    assert.equal(gladys.fake.states.at(-1).state, 1, 'the state is still published');
-
-    t.mock.timers.tick(10_000);
-    await flush();
-    assert.equal(gladys.fake.states.at(-1).state, 0, 'the detection is cleared');
-    assert.equal(gladys.fake.sceneEvents.length, 1, 'the clear fires no event');
-  } finally {
-    stopPush();
-  }
+test('acknowledge_host_problems acknowledges the host and its services, with a comment', async (t) => {
+  const w = await world(t);
+  w.nagios.setHost('switch', 1); // not acknowledged any more
+  w.nagios.setService('switch', 'SSH', 2);
+  await w.hub.pollAll();
+  const device = hostDevice(w.gladys, 'switch');
+  const ack = await w.fake.sceneAction('acknowledge_host_problems', { device, message: ' Seen ' });
+  assert.equal(ack.success, true, ack.error);
+  assert.deepEqual(ack.data.outputs, { acknowledged: 2 });
+  assert.deepEqual(committed(w), [
+    [COMMANDS.ACKNOWLEDGE_HOST, 'switch', undefined, 'Seen'],
+    [COMMANDS.ACKNOWLEDGE_SERVICE, 'switch', 'SSH', 'Seen'],
+  ]);
+  // Read again at once: nothing left to acknowledge.
+  const again = await w.fake.sceneAction('acknowledge_host_problems', { device });
+  assert.deepEqual(again.data.outputs, { acknowledged: 0 });
 });
 
-test('motion_detected data only carries keys the trigger declares', async (t) => {
-  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
-  const gladys = createFakeGladys();
-  const stopPush = motionSensor.startPush(gladys, config);
-  try {
-    t.mock.timers.tick(60_000);
-    await flush();
-  } finally {
-    stopPush();
-  }
-  const [{ data }] = gladys.fake.sceneEvents;
-  const trigger = declarationOf('scene_triggers', MOTION_DETECTED_TRIGGER);
-  // The core keeps the `fields` keys (filters) and the `variables` keys
-  // (exposed to the scene): any other key would be silently dropped.
-  const declared = [...keysOf(trigger.fields), ...keysOf(trigger.variables)];
-  for (const [key, value] of Object.entries(data)) {
-    assert.ok(declared.includes(key), `data.${key} is not declared, the core would drop it`);
-    assert.ok(value === null || typeof value !== 'object', `data.${key} must be a primitive`);
-  }
-  // A `"source": "devices"` filter stores a device external_id.
-  assert.equal(data.device, deviceIdOf(gladys, 'motion-sensor'));
-  const targets = trigger.fields.find((field) => field.key === 'target').options;
-  assert.ok(
-    targets.some((option) => option.value === data.target),
-    `data.target "${data.target}" must be one of the filter options`,
+test('acknowledge_host_problems: services only on a host UP, the default comment in its language', async (t) => {
+  const w = await world(t, { config: { ...BASE_CONFIG, language: 'fr' } });
+  const ack = await w.fake.sceneAction('acknowledge_host_problems', {
+    device: hostDevice(w.gladys, 'nas'),
+  });
+  // The RAID was already acknowledged.
+  assert.deepEqual(ack.data.outputs, { acknowledged: 2 });
+  assert.deepEqual(committed(w), [
+    [COMMANDS.ACKNOWLEDGE_SERVICE, 'nas', 'Backup', 'Acquitté depuis Gladys'],
+    [COMMANDS.ACKNOWLEDGE_SERVICE, 'nas', 'Disk /', 'Acquitté depuis Gladys'],
+  ]);
+});
+
+test('acknowledge_host_problems: turned off, refused, unknown host', async (t) => {
+  const off = await world(t, { config: { ...BASE_CONFIG, allow_acknowledge: false } });
+  const disabled = await off.fake.sceneAction('acknowledge_host_problems', {
+    device: hostDevice(off.gladys, 'nas'),
+  });
+  assert.equal(disabled.success, false);
+  assert.match(disabled.error, /turned off/);
+  assert.deepEqual(off.nagios.commands, []);
+
+  const w = await world(t);
+  w.nagios.missing.add('commands');
+  const refused = await w.fake.sceneAction('acknowledge_host_problems', {
+    device: hostDevice(w.gladys, 'nas'),
+  });
+  assert.equal(refused.success, false);
+  assert.match(refused.error, /authorized_for_all_host_commands/);
+  const unknown = await w.fake.sceneAction('acknowledge_host_problems', { device: 'nope' });
+  assert.match(unknown.error, /not a Nagios host/);
+});
+
+test('check_host_now schedules the host and its services, forced', async (t) => {
+  const w = await world(t);
+  const ack = await w.fake.sceneAction('check_host_now', { device: hostDevice(w.gladys, 'nas') });
+  assert.equal(ack.success, true, ack.error);
+  assert.deepEqual(ack.data.outputs, { scheduled: true });
+  assert.deepEqual(
+    w.nagios.commands.map(({ type, host }) => [type, host]),
+    [
+      [COMMANDS.CHECK_HOST, 'nas'],
+      [COMMANDS.CHECK_HOST_SERVICES, 'nas'],
+    ],
   );
+  const posts = w.nagios.calls.filter((call) => call.method === 'POST');
+  assert.ok(posts.every((call) => call.form.force_check === 'on'));
+
+  w.nagios.missing.add('external_commands');
+  const disabled = await w.fake.sceneAction('check_host_now', {
+    device: hostDevice(w.gladys, 'nas'),
+  });
+  assert.match(disabled.error, /check_external_commands/);
+
+  const off = await world(t, { config: { ...BASE_CONFIG, allow_recheck: false } });
+  const refused = await off.fake.sceneAction('check_host_now', {
+    device: hostDevice(off.gladys, 'nas'),
+  });
+  assert.match(refused.error, /turned off/);
+  assert.deepEqual(off.nagios.commands, []);
 });
 
-test('identify_device signals the chosen device and returns the declared outputs', async () => {
-  const gladys = createFakeGladys();
-  const outputs = await SCENE_ACTIONS.identify_device(gladys, {
-    fields: { device: deviceIdOf(gladys, 'light') },
-    config,
+test('get_problems: every host, or one, in words', async (t) => {
+  const w = await world(t);
+  const all = await w.fake.sceneAction('get_problems', {});
+  assert.deepEqual(all.data.outputs, {
+    count: 7,
+    unhandled: 2,
+    hosts_down: 3,
+    services_critical: 2,
+    services_warning: 1,
+    services_unknown: 1,
+    names:
+      'Outside camera: DOWN, Switch: DOWN, Camera garage: UNREACHABLE, ' +
+      'Outside camera: HTTP CRITICAL, NAS du salon: RAID CRITICAL, ' +
+      'NAS du salon: Backup UNKNOWN, NAS du salon: Disk / WARNING',
   });
-  assert.deepEqual(outputs, { signalled: true });
-  const declared = keysOf(declarationOf('scene_actions', 'identify_device').outputs);
-  for (const key of Object.keys(outputs)) {
-    assert.ok(declared.includes(key), `output "${key}" is not declared, the core would drop it`);
-  }
+
+  const one = await w.fake.sceneAction('get_problems', { device: hostDevice(w.gladys, 'outside') });
+  assert.equal(one.data.outputs.count, 2);
+  assert.equal(one.data.outputs.names, 'Outside camera: DOWN, Outside camera: HTTP CRITICAL');
 });
 
-test('identify_device reports a device that cannot signal itself through its output', async () => {
-  // Not a failure: a scene action is never a condition, the scene author
-  // gates the following actions on the output instead.
-  const gladys = createFakeGladys();
-  const outputs = await SCENE_ACTIONS.identify_device(gladys, {
-    fields: { device: deviceIdOf(gladys, 'weather-station') },
-    config,
-  });
-  assert.deepEqual(outputs, { signalled: false });
+test('the scene actions fail clearly while Nagios does not answer', async (t) => {
+  const w = await world(t);
+  w.nagios.failure = 'down';
+  w.clock.advance(20_000);
+  const ack = await w.fake.sceneAction('get_problems', {});
+  assert.equal(ack.success, false);
+  assert.match(ack.error, /does not answer/);
 });

@@ -1,67 +1,230 @@
-# Template de démonstration
+# Nagios
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Amenez votre supervision [Nagios Core](https://www.nagios.org/projects/nagios-core/)
+dans Gladys : chaque hôte devient un appareil (UP, services WARNING, CRITICAL
+et UNKNOWN, problèmes non traités, acquitté, maintenance), un appareil
+« Nagios » résume l'ensemble et dit si Nagios tourne, et vos scènes réagissent
+quand un hôte tombe ou qu'un service échoue — une lampe rouge quand le NAS est
+tombé, un message quand une sauvegarde passe en CRITICAL. Une scène peut aussi
+acquitter les problèmes d'un hôte ou le faire vérifier tout de suite, et un
+widget du tableau de bord liste les problèmes en cours.
 
-## Ce que vous obtenez
+L'intégration lit les CGI JSON de l'interface web de Nagios sur votre réseau
+local, avec un utilisateur web. Rien ne passe par un cloud.
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+Testé contre un vrai Nagios Core 4.5 (4.5.12, image Docker
+`jasonrivers/nagios`, checks factices forcés en WARNING, CRITICAL et UNKNOWN,
+un hôte DOWN, un hôte UNREACHABLE derrière lui, une maintenance, des
+acquittements, un hôte jamais vérifié, le démon arrêté). Vos retours sont les
+bienvenus :
+[github.com/guim31/gladys-nagios/issues](https://github.com/guim31/gladys-nagios/issues).
 
-## Configuration
+## Ce qu'il faut
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+- Gladys Assistant 5.1.0 ou plus récent.
+- Nagios Core 4 (4.0 ou plus : les CGI JSON `statusjson.cgi` et
+  `objectjson.cgi` sont arrivés avec lui) et son interface web, joignables
+  depuis la machine Gladys. Nagios XI, Icinga, Naemon et Shinken sont d'autres
+  produits.
+- Un utilisateur web pour Gladys, avec les droits nécessaires dans `cgi.cfg`.
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+## Mise en route
 
-## Actions
+### 1. Créer un utilisateur web
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Sur le serveur Nagios, ajoutez un utilisateur au fichier de mots de passe de
+l'interface web (le chemin dépend de l'installation) :
 
-## Scènes
+```
+htpasswd /usr/local/nagios/etc/htpasswd.users gladys
+```
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+Puis donnez-lui les droits dans `cgi.cfg`, en ajoutant `gladys` à ces lignes
+(séparé par des virgules) :
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+```
+authorized_for_all_hosts=nagiosadmin,gladys
+authorized_for_all_services=nagiosadmin,gladys
+authorized_for_all_host_commands=nagiosadmin,gladys
+authorized_for_all_service_commands=nagiosadmin,gladys
+```
+
+Les deux dernières ne servent qu'à acquitter ou à vérifier depuis Gladys :
+laissez-les de côté si Gladys doit seulement lire. Sans les deux premières,
+l'utilisateur ne voit que les hôtes et services dont il est contact. Aucun
+redémarrage n'est nécessaire : les CGI relisent `cgi.cfg` à chaque requête. Les
+commandes demandent aussi `check_external_commands=1` dans `nagios.cfg` (la
+valeur par défaut).
+
+### 2. Configurer l'intégration
+
+Dans Gladys, ouvrez la configuration de l'intégration :
+
+- **Adresse** : l'adresse de l'interface web de Nagios, ex.
+  `192.168.1.2/nagios`. `http://` et `/nagios` sont ajoutés si vous n'en
+  saisissez pas d'autres (`/nagios4` avec les paquets Debian et Ubuntu) ;
+  l'adresse d'une page de l'interface, copiée depuis le navigateur, marche
+  aussi.
+- **Utilisateur web** et **Mot de passe** : l'utilisateur de l'étape 1.
+- **Groupes d'hôtes (facultatif)** : noms de groupes d'hôtes Nagios
+  (`hostgroup_name`) séparés par des virgules, ex. `homelab, linux-servers` :
+  un hôte de l'un d'eux est retenu. Vide : tous les hôtes.
+- **Intervalle de rafraîchissement** : de 30 secondes à 5 minutes (1 minute par
+  défaut).
+- **Autoriser l'acquittement depuis les scènes** et **Autoriser la
+  vérification immédiate depuis les scènes** : décochez pour désactiver ces
+  actions.
+- **Accepter les certificats auto-signés** : seulement pour une adresse
+  `https://` avec votre propre certificat ; il n'est alors pas vérifié.
+- **Langue des noms** : langue des noms de fonctionnalités et des résultats de
+  scène.
+
+Enregistrez, puis cliquez sur **Tester la connexion** : elle affiche la version
+de Nagios, le nombre d'hôtes, d'hôtes DOWN et de services en problème.
+
+### 3. Ajouter les appareils
+
+Ouvrez l'onglet **Découverte** de l'intégration et ajoutez les hôtes à suivre,
+et l'appareil « Nagios » si vous voulez les totaux. Les déclencheurs de scène
+valent pour tous les hôtes, ajoutés à Gladys ou non.
+
+## Les appareils
+
+Chaque **hôte** (nommé d'après son alias dans Nagios) :
+
+| Fonctionnalité        | Valeur                                                                      |
+| --------------------- | --------------------------------------------------------------------------- |
+| Hôte UP               | 1 UP, 0 DOWN ou UNREACHABLE ; vide tant que l'hôte est PENDING              |
+| Services WARNING      | nombre de services WARNING                                                  |
+| Services CRITICAL     | nombre de services CRITICAL                                                 |
+| Services UNKNOWN      | nombre de services UNKNOWN                                                  |
+| Problèmes non traités | problèmes d'hôte et de services ni acquittés ni en maintenance              |
+| Hôte acquitté         | 1 tant que l'hôte est DOWN ou UNREACHABLE et son problème acquitté          |
+| En maintenance        | 1 tant que l'hôte est dans une maintenance planifiée (temps d'arrêt Nagios) |
+
+L'appareil **Nagios** : Nagios actif (1 tant que le démon Nagios met à jour son
+état, 0 une fois arrêté), Hôtes DOWN (DOWN ou UNREACHABLE), Services WARNING,
+Services CRITICAL, Services UNKNOWN et Problèmes non traités, sur les hôtes de
+la configuration.
+
+Un hôte est UNREACHABLE quand il est tombé derrière un parent (`parents`)
+tombé lui aussi. Les compteurs de services comptent les états que Nagios est
+encore en train de confirmer (SOFT), comme son interface web. Les valeurs ne
+sont envoyées à Gladys que quand elles changent, et sinon toutes les 6 heures.
 
 ## Tableau de bord
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+Le widget **Problèmes Nagios** affiche trois tuiles — les hôtes DOWN, les
+services CRITICAL, les problèmes non traités — et les problèmes : hôtes DOWN,
+puis UNREACHABLE, puis services CRITICAL, UNKNOWN et WARNING, les plus récents
+d'abord. Chaque ligne donne le service et son état, l'hôte, ✓ une fois acquitté
+et ⏸ en maintenance. Dix lignes au plus. **Actualiser** relit Nagios. Dans ses
+réglages, choisissez des hôtes pour n'afficher que les leurs (vide : tous).
+
+## Scènes
+
+### Déclencheurs
+
+- **Un hôte tombe** : un hôte passe DOWN ou UNREACHABLE. Filtre : hôtes (vide :
+  tous). Variables : nom de l'hôte, état (DOWN, UNREACHABLE). Un hôte qui passe
+  de DOWN à UNREACHABLE n'est pas annoncé deux fois.
+- **Un hôte revient** : un hôte annoncé tombé est de nouveau UP. Variables :
+  nom de l'hôte, durée en minutes.
+- **Un service pose problème** : un service passe en WARNING, CRITICAL ou
+  UNKNOWN, ou change entre eux (de WARNING à CRITICAL, par exemple). Filtres :
+  hôtes, états (vide : tous ; pour « CRITICAL seulement », choisissez
+  CRITICAL). Variables : nom de l'hôte, service, état, sortie du check (sa
+  première ligne).
+- **Un service revient OK** : un service annoncé en problème est de nouveau OK.
+  Filtres : hôtes, dernier état de problème annoncé. Variables : nom de l'hôte,
+  service, dernier état de problème, durée en minutes.
+- **Nagios ne surveille plus** : l'interface web ne répond pas deux fois de
+  suite, ou le démon Nagios est arrêté (variables : adresse, erreur).
+
+Les problèmes déjà là au démarrage de l'intégration ne sont pas annoncés, mais
+leur fin l'est. Seuls les états confirmés (HARD) comptent : tant que Nagios
+refait un check (état SOFT, jusqu'à `max_check_attempts`), rien n'est annoncé,
+comme Nagios ne notifie pas non plus. Un changement survenu pendant un
+redémarrage de Gladys ou de l'intégration est annoncé une fois à la lecture
+suivante. Un problème en maintenance (du service ou de son hôte) n'est pas
+annoncé ; s'il est toujours là à la fin de la maintenance, il l'est alors.
+
+### Actions
+
+- **Acquitter les problèmes d'un hôte** : acquitte dans Nagios le problème de
+  l'hôte (DOWN, UNREACHABLE) et chacun de ses services en problème pas encore
+  acquitté, avec un commentaire (vide : « Acquitté depuis Gladys »).
+  L'acquittement est persistant (jusqu'au retour UP de l'hôte ou OK du
+  service) et son commentaire est conservé ; Nagios met le nom de l'utilisateur
+  web en auteur. Renvoie le nombre acquitté. Désactivez-la avec « Autoriser
+  l'acquittement depuis les scènes ».
+- **Vérifier un hôte maintenant** : demande à Nagios de vérifier tout de suite
+  l'hôte et tous ses services (forcé, comme « Re-schedule the next check » de
+  l'interface web), par exemple après une réparation ou un redémarrage. Les
+  nouveaux états arrivent avec les lectures suivantes. Désactivez-la avec
+  « Autoriser la vérification immédiate depuis les scènes ».
+- **Lire les problèmes** : compte et liste les problèmes d'un hôte, ou de tous,
+  pour les actions suivantes : nombre, non traités, hôtes DOWN, services
+  CRITICAL, WARNING et UNKNOWN, et la liste « hôte : problème ».
+
+### Idées de scènes
+
+- **Une lampe rouge quand le NAS tombe** : déclencheur « Un hôte tombe », hôte
+  NAS → passer la lampe du salon en rouge et envoyer
+  `{{triggerEvent.data.host}} : {{triggerEvent.data.state_name}}`.
+- **Services critiques seulement** : déclencheur « Un service pose problème »,
+  état CRITICAL → message `{{triggerEvent.data.host}} / {{triggerEvent.data.service}} :
+{{triggerEvent.data.output}}`.
+- **Retour après redémarrage** : quand la prise connectée du NAS est rallumée,
+  attendre 3 minutes, puis « Vérifier un hôte maintenant » sur le NAS : inutile
+  d'attendre le prochain check.
+- **Rapport du matin** : chaque jour à 8 h, « Lire les problèmes » → envoyer le
+  nombre et la liste quand le nombre dépasse 0.
+- **Vu depuis le canapé** : un bouton du tableau de bord ou une télécommande
+  Zigbee lance « Acquitter les problèmes d'un hôte » sur le NAS.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Utilisateur ou mot de passe refusé par le serveur web »** : vérifiez
+  l'utilisateur dans `htpasswd.users` (connectez-vous avec à l'interface web).
+- **« Nagios ne répond pas »** : vérifiez l'adresse depuis la machine Gladys.
+  `localhost` est le conteneur de l'intégration lui-même : utilisez l'adresse
+  IP de la machine Nagios.
+- **« Pas de Nagios Core 4 à cette adresse »** : le chemin web est faux
+  (`/nagios`, `/nagios4`…), ou un autre programme répond là. Copiez l'adresse de
+  la page d'accueil de Nagios depuis le navigateur.
+- **« Le démon Nagios n'est pas lancé »** : le serveur web répond mais Nagios
+  lui-même est arrêté ou bloqué (son fichier d'état manque ou est ancien) :
+  relancez Nagios, et vérifiez sa configuration avec `nagios -v nagios.cfg`.
+- **« Aucun hôte visible »** : ajoutez l'utilisateur à
+  `authorized_for_all_hosts` et `authorized_for_all_services` dans `cgi.cfg`,
+  ou faites-en un contact des hôtes.
+- **« Un groupe d'hôtes de la configuration n'existe pas »** : vérifiez
+  l'orthographe ; c'est le `hostgroup_name`, pas son alias.
+- **« Certificat refusé »** : cochez « Accepter les certificats auto-signés ».
+- **L'acquittement ou la vérification est refusé** : ajoutez l'utilisateur à
+  `authorized_for_all_host_commands` et `authorized_for_all_service_commands`
+  dans `cgi.cfg` ; « Nagios n'accepte pas les commandes externes » : mettez
+  `check_external_commands=1` dans `nagios.cfg` et relancez Nagios.
+
+## Limites
+
+- Un Nagios par intégration. Nagios XI et les dérivés (Icinga, Naemon) ne sont
+  pas pris en charge : leurs interfaces diffèrent.
+- États des hôtes et des services seulement : pas de métriques, pas de données
+  de performance.
+- L'intégration lit Nagios à l'intervalle choisi : un événement qui va et vient
+  entre deux lectures est manqué. Nagios écrit son état toutes les 10 secondes
+  (`status_update_interval`) : un acquittement apparaît quelques secondes plus
+  tard.
+- « Un service revient OK » se déclenche aussi quand un service en problème est
+  retiré de la supervision ; un hôte retiré de Nagios ou du périmètre s'efface
+  sans bruit.
+- 30 événements de scène au plus par lecture : une panne réseau peut en lever
+  des dizaines d'un coup ; le reste suit aux lectures suivantes.
+- Pas de quota : chaque lecture envoie trois requêtes aux CGI (une de plus par
+  groupe d'hôtes, et la liste des objets une fois par heure, pour les alias).
+  Une commande fait deux requêtes (le formulaire, pour le jeton anti-CSRF de
+  Nagios 4.5, puis la commande).
+
+Sans lien avec Nagios Enterprises.

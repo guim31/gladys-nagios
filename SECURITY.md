@@ -30,6 +30,27 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+What the integration handles:
+
+- **Secrets**: the password of the Nagios web user is a `secret` field of the
+  Gladys configuration. The integration reads it from Gladys at startup, keeps
+  it in memory, sends it only to the Nagios address of the configuration (the
+  `Authorization: Basic` header), and never writes it to `/data` nor to the
+  logs. Over `http://` (the default of Nagios), Basic auth travels in clear on
+  the local network: prefer `https://` when the network is not trusted. The
+  user has the rights `cgi.cfg` gives it: the documentation asks for read
+  rights, plus the command rights only if acknowledging or checking now is
+  wanted, and both scene actions can be turned off.
+- **Stored in `/data`**: `nagios-state.json`, the problems already seen (host
+  and service names, state, start time, check output), the address and host
+  groups of the configuration, and a truncated hash of the user name, so that
+  a restart neither repeats nor misses a scene event. No password.
+- **Network**: requests go only to the Nagios address typed in the
+  configuration. "Accept self-signed certificates" (off by default) turns the
+  verification of an `https://` certificate off: the connection stays
+  encrypted but the server is not authenticated. The integration opens no port
+  and calls no cloud service.
+
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+Nagios itself, and the hosts it monitors.

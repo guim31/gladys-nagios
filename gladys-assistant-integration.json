@@ -1,177 +1,966 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Nagios",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Your Nagios Core hosts and services in Gladys, with scenes when a host goes down or a service fails.",
+    "fr": "Hôtes et services Nagios Core dans Gladys, avec des scènes quand un hôte tombe ou un service échoue.",
+    "de": "Deine Nagios-Core-Hosts und -Services in Gladys, mit Szenen bei Ausfällen und Service-Problemen.",
+    "es": "Sus hosts y servicios de Nagios Core en Gladys, con escenas cuando un host cae o falla un servicio."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "docker_image": "ghcr.io/guim31/gladys-nagios:1.0.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-nagios/main/cover.png",
+  "categories": ["network"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Your Nagios Core",
+        "fr": "Votre Nagios Core",
+        "de": "Dein Nagios Core",
+        "es": "Su Nagios Core"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Nagios Core 4 with its web interface (JSON CGIs). Use a web user of htpasswd.users listed in cgi.cfg under authorized_for_all_hosts and authorized_for_all_services, plus the *_commands lines to acknowledge or check now. Then add the hosts from the Discover tab.",
+        "fr": "Nagios Core 4 avec son interface web (CGI JSON). Utilisez un utilisateur web de htpasswd.users cité dans cgi.cfg sous authorized_for_all_hosts et authorized_for_all_services, plus les lignes *_commands pour acquitter ou vérifier. Ajoutez ensuite les hôtes (onglet Découverte).",
+        "de": "Nagios Core 4 mit Weboberfläche (JSON-CGIs). Nutze einen Web-Benutzer aus htpasswd.users, der in cgi.cfg unter authorized_for_all_hosts und authorized_for_all_services steht, dazu die *_commands-Zeilen zum Quittieren oder Prüfen. Lege dann die Hosts an (Tab „Entdecken“).",
+        "es": "Nagios Core 4 con su interfaz web (CGI JSON). Use un usuario web de htpasswd.users incluido en cgi.cfg en authorized_for_all_hosts y authorized_for_all_services, más las líneas *_commands para reconocer o comprobar. Después añada los hosts (pestaña Descubrir)."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/guim31/gladys-nagios/blob/main/docs/en.md",
+          "label": {
+            "en": "Setup guide",
+            "fr": "Guide d'installation",
+            "de": "Installationsanleitung",
+            "es": "Guía de instalación"
+          }
+        },
+        {
+          "url": "https://assets.nagios.com/downloads/nagioscore/docs/nagioscore/4/en/cgiauth.html",
+          "label": {
+            "en": "Nagios CGI authorization",
+            "fr": "Droits des CGI de Nagios",
+            "de": "Berechtigungen der Nagios-CGIs",
+            "es": "Permisos de los CGI de Nagios"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "nagios_url",
+      "type": "string",
+      "label": {
+        "en": "Address",
+        "fr": "Adresse",
+        "de": "Adresse",
+        "es": "Dirección"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
+      "description": {
+        "en": "The address of the Nagios web interface; http:// and /nagios unless you type others.",
+        "fr": "L'adresse de l'interface web de Nagios ; http:// et /nagios sauf si vous saisissez autre chose.",
+        "de": "Die Adresse der Nagios-Weboberfläche; http:// und /nagios, außer du gibst etwas anderes ein.",
+        "es": "La dirección de la interfaz web de Nagios; http:// y /nagios salvo que introduzca otros."
+      },
+      "placeholder": {
+        "en": "e.g. 192.168.1.2/nagios",
+        "fr": "ex. 192.168.1.2/nagios",
+        "de": "z. B. 192.168.1.2/nagios",
+        "es": "p. ej. 192.168.1.2/nagios"
+      },
+      "required": true
     },
     {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+      "key": "username",
+      "type": "string",
+      "label": {
+        "en": "Web user",
+        "fr": "Utilisateur web",
+        "de": "Web-Benutzer",
+        "es": "Usuario web"
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
+      "placeholder": {
+        "en": "e.g. gladys",
+        "fr": "ex. gladys",
+        "de": "z. B. gladys",
+        "es": "p. ej. gladys"
+      },
       "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+      "description": {
+        "en": "A user of htpasswd.users, the one you log in to the Nagios web interface with.",
+        "fr": "Un utilisateur de htpasswd.users, celui avec lequel vous ouvrez l'interface web de Nagios.",
+        "de": "Ein Benutzer aus htpasswd.users, mit dem du dich an der Nagios-Weboberfläche anmeldest.",
+        "es": "Un usuario de htpasswd.users, con el que inicia sesión en la interfaz web de Nagios."
+      }
     },
     {
-      "key": "unit",
+      "key": "password",
+      "type": "secret",
+      "label": {
+        "en": "Password",
+        "fr": "Mot de passe",
+        "de": "Passwort",
+        "es": "Contraseña"
+      },
+      "description": {
+        "en": "Its password. A dedicated user is best: give it only the rights listed above.",
+        "fr": "Son mot de passe. Mieux vaut un utilisateur dédié : ne lui donnez que les droits ci-dessus.",
+        "de": "Sein Passwort. Am besten ein eigener Benutzer: Gib ihm nur die oben genannten Rechte.",
+        "es": "Su contraseña. Mejor un usuario dedicado: concédale solo los permisos indicados arriba."
+      },
+      "required": true
+    },
+    {
+      "key": "host_groups",
+      "type": "string",
+      "label": {
+        "en": "Host groups (optional)",
+        "fr": "Groupes d'hôtes (facultatif)",
+        "de": "Hostgruppen (optional)",
+        "es": "Grupos de hosts (opcional)"
+      },
+      "description": {
+        "en": "Names of Nagios host groups (hostgroup_name), separated by commas: a host in one of them is kept. Empty: every host.",
+        "fr": "Noms de groupes d'hôtes Nagios (hostgroup_name), séparés par des virgules : un hôte de l'un d'eux est retenu. Vide : tous les hôtes.",
+        "de": "Namen von Nagios-Hostgruppen (hostgroup_name), durch Kommas getrennt: Ein Host aus einer davon wird übernommen. Leer: alle Hosts.",
+        "es": "Nombres de grupos de hosts de Nagios (hostgroup_name), separados por comas: se conserva un host de uno de ellos. Vacío: todos los hosts."
+      },
+      "placeholder": {
+        "en": "e.g. homelab, linux-servers",
+        "fr": "ex. homelab, linux-servers",
+        "de": "z. B. homelab, linux-servers",
+        "es": "p. ej. homelab, linux-servers"
+      },
+      "required": false
+    },
+    {
+      "key": "options",
+      "type": "section",
+      "label": {
+        "en": "Options",
+        "fr": "Options",
+        "de": "Optionen",
+        "es": "Opciones"
+      }
+    },
+    {
+      "key": "poll_interval",
       "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "label": {
+        "en": "Refresh interval",
+        "fr": "Intervalle de rafraîchissement",
+        "de": "Aktualisierungsintervall",
+        "es": "Intervalo de actualización"
+      },
+      "description": {
+        "en": "How often Nagios is read: three requests to the JSON CGIs each time.",
+        "fr": "À quelle fréquence Nagios est lu : trois requêtes aux CGI JSON à chaque fois.",
+        "de": "Wie oft Nagios gelesen wird: jedes Mal drei Anfragen an die JSON-CGIs.",
+        "es": "Con qué frecuencia se lee Nagios: tres peticiones a los CGI JSON cada vez."
+      },
       "required": false,
-      "default": "celsius",
+      "default": "60",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes",
+            "de": "30 Sekunden",
+            "es": "30 segundos"
+          }
+        },
+        {
+          "value": "60",
+          "label": {
+            "en": "1 minute",
+            "fr": "1 minute",
+            "de": "1 Minute",
+            "es": "1 minuto"
+          }
+        },
+        {
+          "value": "120",
+          "label": {
+            "en": "2 minutes",
+            "fr": "2 minutes",
+            "de": "2 Minuten",
+            "es": "2 minutos"
+          }
+        },
+        {
+          "value": "300",
+          "label": {
+            "en": "5 minutes",
+            "fr": "5 minutes",
+            "de": "5 Minuten",
+            "es": "5 minutos"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "allow_acknowledge",
+      "type": "boolean",
+      "label": {
+        "en": "Allow acknowledging from scenes",
+        "fr": "Autoriser l'acquittement depuis les scènes",
+        "de": "Quittieren aus Szenen erlauben",
+        "es": "Permitir reconocer desde escenas"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "Untick to turn off the \"Acknowledge the problems of a host\" scene action.",
+        "fr": "Décochez pour désactiver l'action de scène « Acquitter les problèmes d'un hôte ».",
+        "de": "Deaktiviere es, um die Szenen-Aktion „Probleme eines Hosts quittieren“ auszuschalten.",
+        "es": "Desmarque para desactivar la acción de escena «Reconocer los problemas de un host»."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": true
+    },
+    {
+      "key": "allow_recheck",
+      "type": "boolean",
+      "label": {
+        "en": "Allow checking now from scenes",
+        "fr": "Autoriser la vérification immédiate depuis les scènes",
+        "de": "Sofortige Prüfung aus Szenen erlauben",
+        "es": "Permitir comprobar ahora desde escenas"
+      },
+      "description": {
+        "en": "Untick to turn off the \"Check a host now\" scene action.",
+        "fr": "Décochez pour désactiver l'action de scène « Vérifier un hôte maintenant ».",
+        "de": "Deaktiviere es, um die Szenen-Aktion „Host jetzt prüfen“ auszuschalten.",
+        "es": "Desmarque para desactivar la acción de escena «Comprobar un host ahora»."
+      },
+      "required": false,
+      "default": true
+    },
+    {
+      "key": "allow_self_signed",
+      "type": "boolean",
+      "label": {
+        "en": "Accept self-signed certificates",
+        "fr": "Accepter les certificats auto-signés",
+        "de": "Selbstsignierte Zertifikate akzeptieren",
+        "es": "Aceptar certificados autofirmados"
+      },
+      "description": {
+        "en": "Only for https:// with a certificate of your own: the certificate is then not verified.",
+        "fr": "Seulement pour un https:// avec votre propre certificat : il n'est alors pas vérifié.",
+        "de": "Nur für https:// mit einem eigenen Zertifikat: Es wird dann nicht geprüft.",
+        "es": "Solo para https:// con un certificado propio: entonces no se verifica."
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the names",
+        "fr": "Langue des noms",
+        "de": "Sprache der Namen",
+        "es": "Idioma de los nombres"
+      },
+      "description": {
+        "en": "Language of the feature names (set when a device is added) and of the scene results.",
+        "fr": "Langue des noms des fonctionnalités (fixés à l'ajout d'un appareil) et des résultats de scène.",
+        "de": "Sprache der Funktionsnamen (beim Hinzufügen eines Geräts festgelegt) und der Szenen-Ergebnisse.",
+        "es": "Idioma de los nombres de las funciones (fijados al añadir un dispositivo) y de los resultados de escena."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "test_connection",
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion",
+        "de": "Verbindung testen",
+        "es": "Probar la conexión"
+      },
       "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "host_down",
+      "label": {
+        "en": "A host goes down",
+        "fr": "Un hôte tombe",
+        "de": "Ein Host fällt aus",
+        "es": "Un host cae"
+      },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "A Nagios host goes DOWN or UNREACHABLE, HARD state (outside a downtime).",
+        "fr": "Un hôte Nagios passe DOWN ou UNREACHABLE, état HARD (hors maintenance).",
+        "de": "Ein Nagios-Host wird DOWN oder UNREACHABLE, Zustand HARD (außerhalb einer Wartungszeit).",
+        "es": "Un host de Nagios pasa a DOWN o UNREACHABLE, estado HARD (fuera de un mantenimiento)."
       },
       "fields": [
         {
           "key": "device",
-          "type": "select",
+          "type": "multi_select",
           "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
+          "label": {
+            "en": "Hosts (empty: any)",
+            "fr": "Hôtes (vide : n'importe lequel)",
+            "de": "Hosts (leer: beliebig)",
+            "es": "Hosts (vacío: cualquiera)"
+          },
+          "description": {
+            "en": "Only the devices added to Gladys can be chosen; empty works for every host.",
+            "fr": "Seuls les appareils ajoutés à Gladys se choisissent ; vide vaut pour tous les hôtes.",
+            "de": "Nur die in Gladys angelegten Geräte sind wählbar; leer gilt für alle Hosts.",
+            "es": "Solo se pueden elegir los dispositivos añadidos a Gladys; vacío vale para todos los hosts."
+          }
+        }
+      ],
+      "variables": [
+        {
+          "key": "host",
+          "type": "string",
+          "label": {
+            "en": "Host name",
+            "fr": "Nom de l'hôte",
+            "de": "Hostname",
+            "es": "Nombre del host"
+          }
         },
         {
-          "key": "target",
+          "key": "state_name",
+          "type": "string",
+          "label": {
+            "en": "State",
+            "fr": "État",
+            "de": "Zustand",
+            "es": "Estado"
+          }
+        }
+      ]
+    },
+    {
+      "key": "host_up",
+      "label": {
+        "en": "A host is back up",
+        "fr": "Un hôte revient",
+        "de": "Ein Host ist wieder da",
+        "es": "Un host vuelve"
+      },
+      "description": {
+        "en": "A Nagios host announced down is UP again.",
+        "fr": "Un hôte Nagios signalé tombé est de nouveau UP.",
+        "de": "Ein als ausgefallen gemeldeter Nagios-Host ist wieder UP.",
+        "es": "Un host de Nagios notificado como caído vuelve a estar UP."
+      },
+      "fields": [
+        {
+          "key": "device",
           "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
+          "source": "devices",
+          "label": {
+            "en": "Hosts (empty: any)",
+            "fr": "Hôtes (vide : n'importe lequel)",
+            "de": "Hosts (leer: beliebig)",
+            "es": "Hosts (vacío: cualquiera)"
+          },
+          "description": {
+            "en": "Only the devices added to Gladys can be chosen; empty works for every host.",
+            "fr": "Seuls les appareils ajoutés à Gladys se choisissent ; vide vaut pour tous les hôtes.",
+            "de": "Nur die in Gladys angelegten Geräte sind wählbar; leer gilt für alle Hosts.",
+            "es": "Solo se pueden elegir los dispositivos añadidos a Gladys; vacío vale para todos los hosts."
+          }
+        }
+      ],
+      "variables": [
+        {
+          "key": "host",
+          "type": "string",
+          "label": {
+            "en": "Host name",
+            "fr": "Nom de l'hôte",
+            "de": "Hostname",
+            "es": "Nombre del host"
+          }
+        },
+        {
+          "key": "duration_minutes",
+          "type": "number",
+          "label": {
+            "en": "Duration (minutes)",
+            "fr": "Durée (minutes)",
+            "de": "Dauer (Minuten)",
+            "es": "Duración (minutos)"
+          }
+        }
+      ]
+    },
+    {
+      "key": "service_problem",
+      "label": {
+        "en": "A service has a problem",
+        "fr": "Un service pose problème",
+        "de": "Ein Service hat ein Problem",
+        "es": "Un servicio tiene un problema"
+      },
+      "description": {
+        "en": "A service enters WARNING, CRITICAL or UNKNOWN, HARD state, or changes between them (outside a downtime).",
+        "fr": "Un service passe WARNING, CRITICAL ou UNKNOWN, état HARD, ou change entre eux (hors maintenance).",
+        "de": "Ein Service wird WARNING, CRITICAL oder UNKNOWN, Zustand HARD, oder wechselt zwischen ihnen (außerhalb einer Wartungszeit).",
+        "es": "Un servicio pasa a WARNING, CRITICAL o UNKNOWN, estado HARD, o cambia entre ellos (fuera de un mantenimiento)."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "multi_select",
+          "source": "devices",
+          "label": {
+            "en": "Hosts (empty: any)",
+            "fr": "Hôtes (vide : n'importe lequel)",
+            "de": "Hosts (leer: beliebig)",
+            "es": "Hosts (vacío: cualquiera)"
+          },
+          "description": {
+            "en": "Only the devices added to Gladys can be chosen; empty works for every host.",
+            "fr": "Seuls les appareils ajoutés à Gladys se choisissent ; vide vaut pour tous les hôtes.",
+            "de": "Nur die in Gladys angelegten Geräte sind wählbar; leer gilt für alle Hosts.",
+            "es": "Solo se pueden elegir los dispositivos añadidos a Gladys; vacío vale para todos los hosts."
+          }
+        },
+        {
+          "key": "state",
+          "type": "multi_select",
+          "label": {
+            "en": "States (empty: any)",
+            "fr": "États (vide : n'importe lequel)",
+            "de": "Zustände (leer: beliebig)",
+            "es": "Estados (vacío: cualquiera)"
+          },
+          "description": {
+            "en": "The new state. For \"CRITICAL only\", choose CRITICAL.",
+            "fr": "Le nouvel état. Pour « CRITICAL seulement », choisissez CRITICAL.",
+            "de": "Der neue Zustand. Für „nur CRITICAL“ wähle CRITICAL.",
+            "es": "El nuevo estado. Para «solo CRITICAL», elija CRITICAL."
+          },
           "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
+            {
+              "value": "1",
+              "label": {
+                "en": "WARNING",
+                "fr": "WARNING",
+                "de": "WARNING",
+                "es": "WARNING"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "CRITICAL",
+                "fr": "CRITICAL",
+                "de": "CRITICAL",
+                "es": "CRITICAL"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "UNKNOWN",
+                "fr": "UNKNOWN",
+                "de": "UNKNOWN",
+                "es": "UNKNOWN"
+              }
+            }
           ]
         }
       ],
       "variables": [
         {
-          "key": "target",
+          "key": "host",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Host name",
+            "fr": "Nom de l'hôte",
+            "de": "Hostname",
+            "es": "Nombre del host"
+          }
+        },
+        {
+          "key": "service",
+          "type": "string",
+          "label": {
+            "en": "Service",
+            "fr": "Service",
+            "de": "Service",
+            "es": "Servicio"
+          }
+        },
+        {
+          "key": "state_name",
+          "type": "string",
+          "label": {
+            "en": "State",
+            "fr": "État",
+            "de": "Zustand",
+            "es": "Estado"
+          }
+        },
+        {
+          "key": "output",
+          "type": "string",
+          "label": {
+            "en": "Check output",
+            "fr": "Sortie du check",
+            "de": "Check-Ausgabe",
+            "es": "Salida del check"
+          }
+        }
+      ]
+    },
+    {
+      "key": "service_recovered",
+      "label": {
+        "en": "A service is OK again",
+        "fr": "Un service revient OK",
+        "de": "Ein Service ist wieder OK",
+        "es": "Un servicio vuelve a OK"
+      },
+      "description": {
+        "en": "A service announced in problem is OK again.",
+        "fr": "Un service signalé en problème est de nouveau OK.",
+        "de": "Ein als Problem gemeldeter Service ist wieder OK.",
+        "es": "Un servicio notificado con problema vuelve a estar OK."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "multi_select",
+          "source": "devices",
+          "label": {
+            "en": "Hosts (empty: any)",
+            "fr": "Hôtes (vide : n'importe lequel)",
+            "de": "Hosts (leer: beliebig)",
+            "es": "Hosts (vacío: cualquiera)"
+          },
+          "description": {
+            "en": "Only the devices added to Gladys can be chosen; empty works for every host.",
+            "fr": "Seuls les appareils ajoutés à Gladys se choisissent ; vide vaut pour tous les hôtes.",
+            "de": "Nur die in Gladys angelegten Geräte sind wählbar; leer gilt für alle Hosts.",
+            "es": "Solo se pueden elegir los dispositivos añadidos a Gladys; vacío vale para todos los hosts."
+          }
+        },
+        {
+          "key": "state",
+          "type": "multi_select",
+          "label": {
+            "en": "States (empty: any)",
+            "fr": "États (vide : n'importe lequel)",
+            "de": "Zustände (leer: beliebig)",
+            "es": "Estados (vacío: cualquiera)"
+          },
+          "description": {
+            "en": "The last problem state announced.",
+            "fr": "Le dernier état de problème signalé.",
+            "de": "Der zuletzt gemeldete Problemzustand.",
+            "es": "El último estado de problema notificado."
+          },
+          "options": [
+            {
+              "value": "1",
+              "label": {
+                "en": "WARNING",
+                "fr": "WARNING",
+                "de": "WARNING",
+                "es": "WARNING"
+              }
+            },
+            {
+              "value": "2",
+              "label": {
+                "en": "CRITICAL",
+                "fr": "CRITICAL",
+                "de": "CRITICAL",
+                "es": "CRITICAL"
+              }
+            },
+            {
+              "value": "3",
+              "label": {
+                "en": "UNKNOWN",
+                "fr": "UNKNOWN",
+                "de": "UNKNOWN",
+                "es": "UNKNOWN"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "key": "host",
+          "type": "string",
+          "label": {
+            "en": "Host name",
+            "fr": "Nom de l'hôte",
+            "de": "Hostname",
+            "es": "Nombre del host"
+          }
+        },
+        {
+          "key": "service",
+          "type": "string",
+          "label": {
+            "en": "Service",
+            "fr": "Service",
+            "de": "Service",
+            "es": "Servicio"
+          }
+        },
+        {
+          "key": "state_name",
+          "type": "string",
+          "label": {
+            "en": "Last problem state",
+            "fr": "Dernier état de problème",
+            "de": "Letzter Problemzustand",
+            "es": "Último estado de problema"
+          }
+        },
+        {
+          "key": "duration_minutes",
+          "type": "number",
+          "label": {
+            "en": "Duration (minutes)",
+            "fr": "Durée (minutes)",
+            "de": "Dauer (Minuten)",
+            "es": "Duración (minutos)"
+          }
+        }
+      ]
+    },
+    {
+      "key": "nagios_unreachable",
+      "label": {
+        "en": "Nagios no longer watches",
+        "fr": "Nagios ne surveille plus",
+        "de": "Nagios überwacht nicht mehr",
+        "es": "Nagios ya no supervisa"
+      },
+      "description": {
+        "en": "Nagios fails to answer twice in a row, or its daemon is stopped.",
+        "fr": "Nagios ne répond pas deux fois de suite, ou son démon est arrêté.",
+        "de": "Nagios antwortet zweimal hintereinander nicht, oder sein Dienst ist gestoppt.",
+        "es": "Nagios no responde dos veces seguidas, o su servicio está detenido."
+      },
+      "variables": [
+        {
+          "key": "address",
+          "type": "string",
+          "label": {
+            "en": "Address",
+            "fr": "Adresse",
+            "de": "Adresse",
+            "es": "Dirección"
+          }
+        },
+        {
+          "key": "error",
+          "type": "string",
+          "label": {
+            "en": "Error",
+            "fr": "Erreur",
+            "de": "Fehler",
+            "es": "Error"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "acknowledge_host_problems",
+      "label": {
+        "en": "Acknowledge the problems of a host",
+        "fr": "Acquitter les problèmes d'un hôte",
+        "de": "Probleme eines Hosts quittieren",
+        "es": "Reconocer los problemas de un host"
       },
-      "timeout_seconds": 15,
+      "description": {
+        "en": "Acknowledges in Nagios the host problem and its services in problem, with a comment.",
+        "fr": "Acquitte dans Nagios le problème de l'hôte et ses services en problème, avec un commentaire.",
+        "de": "Quittiert in Nagios das Host-Problem und seine Services mit Problem, mit einem Kommentar.",
+        "es": "Reconoce en Nagios el problema del host y sus servicios con problemas, con un comentario."
+      },
+      "timeout_seconds": 60,
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": {
+            "en": "Host",
+            "fr": "Hôte",
+            "de": "Host",
+            "es": "Host"
+          },
+          "required": true
+        },
+        {
+          "key": "message",
+          "type": "string",
+          "label": {
+            "en": "Comment (optional)",
+            "fr": "Commentaire (facultatif)",
+            "de": "Kommentar (optional)",
+            "es": "Comentario (opcional)"
+          },
+          "description": {
+            "en": "Empty: \"Acknowledged from Gladys\".",
+            "fr": "Vide : « Acquitté depuis Gladys ».",
+            "de": "Leer: „In Gladys quittiert“.",
+            "es": "Vacío: «Reconocido desde Gladys»."
+          },
+          "required": false
+        }
+      ],
+      "outputs": [
+        {
+          "key": "acknowledged",
+          "type": "number",
+          "label": {
+            "en": "Problems acknowledged",
+            "fr": "Problèmes acquittés",
+            "de": "Quittierte Probleme",
+            "es": "Problemas reconocidos"
+          }
+        }
+      ]
+    },
+    {
+      "key": "check_host_now",
+      "label": {
+        "en": "Check a host now",
+        "fr": "Vérifier un hôte maintenant",
+        "de": "Host jetzt prüfen",
+        "es": "Comprobar un host ahora"
+      },
+      "description": {
+        "en": "Asks Nagios to check a host and all its services right away, without waiting for the next check.",
+        "fr": "Demande à Nagios de vérifier tout de suite un hôte et tous ses services, sans attendre la prochaine vérification.",
+        "de": "Bittet Nagios, einen Host und alle seine Services sofort zu prüfen, ohne auf die nächste Prüfung zu warten.",
+        "es": "Pide a Nagios que compruebe ya un host y todos sus servicios, sin esperar a la próxima comprobación."
+      },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Host",
+            "fr": "Hôte",
+            "de": "Host",
+            "es": "Host"
+          },
           "required": true
         }
       ],
       "outputs": [
         {
-          "key": "signalled",
+          "key": "scheduled",
           "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "label": {
+            "en": "Check scheduled",
+            "fr": "Vérification planifiée",
+            "de": "Prüfung geplant",
+            "es": "Comprobación programada"
+          }
+        }
+      ]
+    },
+    {
+      "key": "get_problems",
+      "label": {
+        "en": "Read the problems",
+        "fr": "Lire les problèmes",
+        "de": "Probleme lesen",
+        "es": "Leer los problemas"
+      },
+      "description": {
+        "en": "Counts and lists the hosts down and services in problem, of one host or of all.",
+        "fr": "Compte et liste les hôtes tombés et les services en problème, d'un hôte ou de tous.",
+        "de": "Zählt und listet ausgefallene Hosts und Services mit Problem, eines Hosts oder aller.",
+        "es": "Cuenta y enumera los hosts caídos y los servicios con problemas, de un host o de todos."
+      },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Host (empty: all)",
+            "fr": "Hôte (vide : tous)",
+            "de": "Host (leer: alle)",
+            "es": "Host (vacío: todos)"
+          },
+          "required": false
+        }
+      ],
+      "outputs": [
+        {
+          "key": "count",
+          "type": "number",
+          "label": {
+            "en": "Problems",
+            "fr": "Problèmes",
+            "de": "Probleme",
+            "es": "Problemas"
+          }
+        },
+        {
+          "key": "unhandled",
+          "type": "number",
+          "label": {
+            "en": "Unhandled problems",
+            "fr": "Problèmes non traités",
+            "de": "Unbehandelte Probleme",
+            "es": "Problemas sin gestionar"
+          }
+        },
+        {
+          "key": "hosts_down",
+          "type": "number",
+          "label": {
+            "en": "Hosts down",
+            "fr": "Hôtes DOWN",
+            "de": "Hosts DOWN",
+            "es": "Hosts DOWN"
+          }
+        },
+        {
+          "key": "services_critical",
+          "type": "number",
+          "label": {
+            "en": "Services CRITICAL",
+            "fr": "Services CRITICAL",
+            "de": "Services CRITICAL",
+            "es": "Servicios CRITICAL"
+          }
+        },
+        {
+          "key": "services_warning",
+          "type": "number",
+          "label": {
+            "en": "Services WARNING",
+            "fr": "Services WARNING",
+            "de": "Services WARNING",
+            "es": "Servicios WARNING"
+          }
+        },
+        {
+          "key": "services_unknown",
+          "type": "number",
+          "label": {
+            "en": "Services UNKNOWN",
+            "fr": "Services UNKNOWN",
+            "de": "Services UNKNOWN",
+            "es": "Servicios UNKNOWN"
+          }
+        },
+        {
+          "key": "names",
+          "type": "string",
+          "label": {
+            "en": "Problems (host: problem)",
+            "fr": "Problèmes (hôte : problème)",
+            "de": "Probleme (Host: Problem)",
+            "es": "Problemas (host: problema)"
+          }
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "problems",
+      "label": {
+        "en": "Nagios problems",
+        "fr": "Problèmes Nagios",
+        "de": "Nagios-Probleme",
+        "es": "Problemas de Nagios"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "Hosts down and services in problem, the most serious first.",
+        "fr": "Hôtes tombés et services en problème, les plus graves d'abord.",
+        "de": "Ausgefallene Hosts und Services mit Problem, die schwersten zuerst.",
+        "es": "Hosts caídos y servicios con problemas, los más graves primero."
+      },
+      "icon": "alert-triangle",
+      "action_timeout_seconds": 30,
+      "settings": [
+        {
+          "key": "hosts",
+          "type": "multi_select",
+          "source": "devices",
+          "label": {
+            "en": "Hosts (empty: all)",
+            "fr": "Hôtes (vide : tous)",
+            "de": "Hosts (leer: alle)",
+            "es": "Hosts (vacío: todos)"
+          },
+          "description": {
+            "en": "Only the devices added to Gladys can be chosen.",
+            "fr": "Seuls les appareils ajoutés à Gladys se choisissent.",
+            "de": "Nur die in Gladys angelegten Geräte sind wählbar.",
+            "es": "Solo se pueden elegir los dispositivos añadidos a Gladys."
+          },
+          "required": false
+        }
+      ]
     }
   ]
 }
