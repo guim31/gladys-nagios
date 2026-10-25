@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-25
+
 ### Added
 
 - One device per Nagios Core host (every host the web user sees, or the hosts
@@ -30,4 +32,5 @@ the notes of the version's GitHub Release.
   4.5) behind the Basic auth of the web interface; feature names, messages and
   documentation in English, French, German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-nagios/commits/main
+[Unreleased]: https://github.com/guim31/gladys-nagios/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-nagios/releases/tag/v1.0.0
